@@ -10,13 +10,13 @@ import { useQueue } from "@/lib/useQueue";
 import { useReview } from "@/components/ReviewProvider";
 
 export default function CategoryReviewPage() {
-  const { storeId, categories, notify, bumpCount, refreshCounts } = useReview();
+  const { storeId, categories, notify, bumpCount, refreshCounts, liveTick } = useReview();
 
   const fetchPage = useCallback(
     (page: number) => api.categoryQueue(storeId, page),
     [storeId],
   );
-  const queue = useQueue<CategoryProduct>(fetchPage, [storeId], (m) => notify(m, "error"));
+  const queue = useQueue<CategoryProduct>(fetchPage, [storeId, liveTick], (m) => notify(m, "error"));
 
   if (!queue.loading && queue.items.length === 0) {
     return (
