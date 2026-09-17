@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import { Toast, type ToastState } from "@/components/Toast";
 import { api, ApiError } from "@/lib/api";
 import type { QueueCounts, Store, User } from "@/lib/types";
+import { useLiveEvents, type LiveStatus } from "@/lib/useLiveEvents";
 
 interface ReviewContext {
   stores: Store[];
@@ -18,6 +19,10 @@ interface ReviewContext {
   /** Adjust a badge locally after a decision, so it doesn't lag a round trip. */
   bumpCount: (queue: keyof QueueCounts, delta: number) => void;
   notify: (message: string, tone?: "info" | "error") => void;
+  /** Bumps whenever the backend says something changed — pass into a `useQueue` deps
+   *  array to have that queue quietly refetch instead of waiting for the next reload. */
+  liveTick: number;
+  liveStatus: LiveStatus;
 }
 
 const Ctx = createContext<ReviewContext | null>(null);
@@ -58,6 +63,8 @@ export function ReviewProvider({ children }: { children: React.ReactNode }) {
       .catch(() => router.replace("/login"));
   }, [router]);
 
+  const live = useLiveEvents(Boolean(user), () => router.replace("/login"));
+
   useEffect(() => {
     if (!user) return;
     api
@@ -75,7 +82,7 @@ export function ReviewProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (user) refreshCounts();
-  }, [user, refreshCounts]);
+  }, [user, refreshCounts, live.tick]);
 
   const bumpCount = useCallback((queue: keyof QueueCounts, delta: number) => {
     setCounts((c) => ({ ...c, [queue]: Math.max(0, c[queue] + delta) }));
@@ -94,7 +101,18 @@ export function ReviewProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider
-      value={{ stores, categories, storeId, setStoreId, counts, refreshCounts, bumpCount, notify }}
+      value={{
+        stores,
+        categories,
+        storeId,
+        setStoreId,
+        counts,
+        refreshCounts,
+        bumpCount,
+        notify,
+        liveTick: live.tick,
+        liveStatus: live.status,
+      }}
     >
       <header className="header">
         <div className="header-bar">
@@ -113,6 +131,17 @@ export function ReviewProvider({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <span className="spacer" />
+          <span
+            className="live-dot"
+            data-status={live.status}
+            title={
+              live.status === "live"
+                ? "Live — updates as reviewers and stages finish work"
+                : live.status === "reconnecting"
+                  ? "Reconnecting — updates may be delayed until this comes back"
+                  : "Connecting…"
+            }
+          />
           <select
             value={storeId ?? ""}
             onChange={(e) => setStoreId(e.target.value ? Number(e.target.value) : undefined)}

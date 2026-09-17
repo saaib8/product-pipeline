@@ -15,7 +15,7 @@ const PROBLEM_LABEL: Record<string, string> = {
 };
 
 export default function ImportPage() {
-  const { stores, storeId, notify, refreshCounts } = useReview();
+  const { stores, storeId, notify, refreshCounts, liveTick } = useReview();
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [target, setTarget] = useState<number | undefined>(storeId);
@@ -30,7 +30,7 @@ export default function ImportPage() {
 
   useEffect(() => {
     api.importBatches(storeId).then((p) => setBatches(p.results)).catch(() => undefined);
-  }, [storeId, latest]);
+  }, [storeId, latest, liveTick]);
 
   useEffect(() => setTarget(storeId), [storeId]);
 

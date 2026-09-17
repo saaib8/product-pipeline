@@ -21,6 +21,9 @@ from __future__ import annotations
 
 import logging
 
+import psycopg2
+import psycopg2.extensions
+from django.conf import settings
 from django.db import connection, transaction
 from django.utils import timezone
 
@@ -31,6 +34,32 @@ logger = logging.getLogger(__name__)
 #: The single channel every worker listens on. The payload is advisory — a worker
 #: re-queries eligibility regardless — so there is no need to fan out per stage.
 CHANNEL = "pipeline_events"
+
+
+def listen_connection() -> "psycopg2.extensions.connection":
+    """A dedicated autocommit connection parked on `LISTEN {CHANNEL}`.
+
+    Separate from Django's ORM connection by necessity: it must sit in autocommit and
+    block in `select()`, neither of which is compatible with a connection the ORM is
+    also using for transactions. Built from Django's own DATABASES entry so it cannot
+    drift from the ORM's target.
+
+    Shared by every long-lived listener — `run_worker.py`'s stage loop and the SSE
+    endpoint (`pipeline/streaming.py`) alike — so there is exactly one place this setup
+    can go wrong, not two slowly-diverging copies of it.
+    """
+    params = settings.DATABASES["default"]
+    conn = psycopg2.connect(
+        dbname=params["NAME"],
+        user=params["USER"],
+        password=params["PASSWORD"],
+        host=params["HOST"] or "localhost",
+        port=params["PORT"] or 5432,
+    )
+    conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+    with conn.cursor() as cur:
+        cur.execute(f"LISTEN {CHANNEL};")
+    return conn
 
 
 def record(product_id: int, event_type: str, status: str) -> OutboxEvent:

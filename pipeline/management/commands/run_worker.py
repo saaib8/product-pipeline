@@ -36,8 +36,6 @@ import threading
 import time
 
 import psycopg2
-import psycopg2.extensions
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from pipeline import outbox
@@ -48,28 +46,6 @@ from pipeline.stages.base import (
     shutdown_requested,
     sweep_stuck,
 )
-
-
-def _listen_connection():
-    """A dedicated autocommit connection parked on the channel.
-
-    Separate from Django's ORM connection by necessity: it must sit in autocommit and
-    block in `select()`, neither of which is compatible with a connection the ORM is
-    also using for transactions. Built from Django's own DATABASES entry so it cannot
-    drift from the ORM's target.
-    """
-    params = settings.DATABASES["default"]
-    conn = psycopg2.connect(
-        dbname=params["NAME"],
-        user=params["USER"],
-        password=params["PASSWORD"],
-        host=params["HOST"] or "localhost",
-        port=params["PORT"] or 5432,
-    )
-    conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
-    with conn.cursor() as cur:
-        cur.execute(f"LISTEN {outbox.CHANNEL};")
-    return conn
 
 
 def _sleep_interruptibly(seconds: float) -> None:
@@ -213,7 +189,7 @@ class Command(BaseCommand):
         listener = None
         if not poll_only:
             try:
-                listener = _listen_connection()
+                listener = outbox.listen_connection()
                 self.stdout.write(self.style.SUCCESS(
                     f"listening on '{outbox.CHANNEL}'"))
             except psycopg2.Error as exc:
@@ -241,7 +217,7 @@ class Command(BaseCommand):
                         pass
                     _sleep_interruptibly(min(interval, 5))
                     try:
-                        listener = _listen_connection()
+                        listener = outbox.listen_connection()
                     except psycopg2.Error:
                         listener = None                 # stages keep polling meanwhile
                     continue

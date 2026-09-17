@@ -10,10 +10,10 @@ import { useQueue } from "@/lib/useQueue";
 import { useReview } from "@/components/ReviewProvider";
 
 export default function IconReviewPage() {
-  const { storeId, notify, bumpCount, refreshCounts } = useReview();
+  const { storeId, notify, bumpCount, refreshCounts, liveTick } = useReview();
 
   const fetchPage = useCallback((page: number) => api.iconQueue(storeId, page), [storeId]);
-  const queue = useQueue<IconProduct>(fetchPage, [storeId], (m) => notify(m, "error"));
+  const queue = useQueue<IconProduct>(fetchPage, [storeId, liveTick], (m) => notify(m, "error"));
 
   if (!queue.loading && queue.items.length === 0) {
     return (
