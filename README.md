@@ -20,6 +20,30 @@ cp .env.example .env          # fill in; nothing sensitive has a default
 ./.venv/bin/python -m pytest
 ```
 
+### Serving: ASGI (Daphne)
+
+The backend is served over ASGI by Daphne. `daphne` sits first in `INSTALLED_APPS`, so
+`manage.py runserver` above already serves ASGI, and local dev matches production. To run
+it for real:
+
+```bash
+./.venv/bin/daphne -b 0.0.0.0 -p 8000 config.asgi:application
+```
+
+- **Why ASGI:** live queue updates (`GET /api/events/`, `pipeline/streaming.py`) keep one
+  connection open per reviewer tab. Under ASGI that's an idle coroutine, and one Postgres
+  `LISTEN` per process serves every tab. It's also the server Channels runs on, so adding
+  WebSockets later needs no second switch.
+- **Scaling:** one Daphne process is a single event loop. For more capacity, run N
+  processes behind a load balancer or reverse proxy. Each process opens its own single
+  `LISTEN` connection.
+- **Reverse proxy in front:** turn off response buffering for `/api/events/`
+  (`X-Accel-Buffering: no` already covers nginx), and keep the read timeout above 20s,
+  which is the stream's keep-alive interval.
+- `CONN_MAX_AGE` must stay 0 (see `config/settings.py`).
+- The SSE stream is async and only works under ASGI. Rolling back to a WSGI server means
+  reverting this change, not only swapping the server command.
+
 ### Frontend
 
 ```bash
