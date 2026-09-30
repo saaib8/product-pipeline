@@ -62,6 +62,9 @@ DEBUG = env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = [h for h in env("DJANGO_ALLOWED_HOSTS", "*").split(",") if h]
 
 INSTALLED_APPS = [
+    # First on purpose: daphne overrides `runserver` so local dev serves ASGI exactly like
+    # production. Below staticfiles, staticfiles' own runserver would win.
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -83,6 +86,9 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "config.urls"
+ASGI_APPLICATION = "config.asgi.application"
+# Kept for tooling that still reads it. Not a rollback path on its own: the SSE endpoint's
+# async stream only works under ASGI.
 WSGI_APPLICATION = "config.wsgi.application"
 
 TEMPLATES = [
@@ -101,6 +107,9 @@ TEMPLATES = [
     },
 ]
 
+# CONN_MAX_AGE is deliberately left at its default of 0. Under ASGI, Django can't reuse
+# persistent connections safely across async requests (see its docs), so raising it leaks
+# connections instead of saving them.
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
